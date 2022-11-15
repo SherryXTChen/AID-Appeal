@@ -56,5 +56,12 @@ if __name__ == '__main__':
     train_loader, val_loader, train_set_stats = datasets.create_datasets(opt)
     model = models.CLIPPredictor(opt, train_set_stats)
     # trainer.validate(model, val_loader)
-    trainer.fit(model, train_loader, val_loader)
+    # trainer.fit(model, train_loader, val_loader)
     trainer.validate(model, val_loader)
+
+
+    '''
+|      val/label_accu       │    0.39398160576820374    │
+│      val/likes_accu       │    0.3856227397918701     │
+│     val/retweets_accu     │    0.10114237666130066    │
+    '''

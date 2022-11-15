@@ -7,15 +7,20 @@ from PIL import Image
 import torch.utils.data as data
 import clip
 
-HASHTAGS = ['#food', '#hotel', '#shoes']
-RETWEETS = [0, 1, 3, 10, float('inf')]
-LIKES = [0, 1, 3, 10, float('inf')]
+# HASHTAGS = ['#food', '#hotel', '#shoes']
+# USERS = ['@WholeFoods', '@bookingcom', '@GUESS']
 
 class TwitterMedia(data.Dataset):
     def __init__(self, opt, split):
         super().__init__()
         self.opt = opt
-        lsts = [glob.glob(f'{opt.data_dir}/{hashtag}/images/*.jpg', recursive=True) for hashtag in HASHTAGS]
+        self.label_list = opt.label_list
+        self.label_list.sort()
+
+        self.retweets_range = opt.retweets_range + [float('inf')]
+        self.likes_range = opt.likes_range + [float('inf')]
+
+        lsts = [glob.glob(f'{opt.data_dir}/{label}/images/*.jpg', recursive=True) for label in self.label_list]
         for l in lsts:
             l.sort()
 
@@ -25,6 +30,7 @@ class TwitterMedia(data.Dataset):
         else:
             lsts = [l[int(0.8 * len(l)):] for l in lsts]
 
+        self.stats = {'label_count_list': [len(l) for l in lsts]}
         self.image_lst = list(itertools.chain(*lsts))
         # self.image_lst = self.image_lst[:len(split) * 16] # for debugging
 
@@ -36,11 +42,8 @@ class TwitterMedia(data.Dataset):
                 json_lst.append(json_path)
                 
             json_lst = list(set(json_lst))
-            self.stats = {
-                'retweet_count_lst': [176696, 44976, 15851, 3198], 
-                'like_count_lst': [126049, 65959, 34022, 14691]
-            } # get_stats(json_lst)
-            # print('train set stats:', self.stats)
+            self.stats.update(self.get_stats(json_lst))
+            print('train set stats:', self.stats)
 
         _, self.clip_preprocess = clip.load('ViT-L/14', device='cpu')
         print(f'{split} set: {len(self)}')
@@ -48,22 +51,23 @@ class TwitterMedia(data.Dataset):
     def __len__(self):
         return len(self.image_lst)
 
-    def get_json_path(self, image_path, return_hashtag=False):
-        hashtag = None
+    def get_json_path(self, image_path, return_label=False, label_list=None):
+        label = None
 
         json_path = image_path.split('/')
         assert json_path[-2] == 'images', json_path[-2]
         json_path[-2] = 'jsons'
         json_path[-1] = json_path[-1].split('_')[0] + '.json'
 
-        if return_hashtag:
-            hashtag = json_path[-3]
-            assert hashtag in HASHTAGS, hashtag
+        if return_label:
+            label = json_path[-3]
+            assert label_list != None, label_list
+            assert label in label_list, f'{label} not in {label_list}'
 
         json_path = '/'.join(json_path)
         assert os.path.exists(json_path), json_path
 
-        return json_path, hashtag
+        return json_path, label
 
 
     def __getitem__(self, index):
@@ -73,16 +77,16 @@ class TwitterMedia(data.Dataset):
         image = self.clip_preprocess(image)
 
         # get meta data
-        # hashtag/images/id.json
-        json_path, hashtag  = self.get_json_path(image_path, return_hashtag=True)
-        hashtag_label = HASHTAGS.index(hashtag)
+        # .../images/id.json
+        json_path, label  = self.get_json_path(image_path, return_label=True, label_list=self.label_list)
+        label_index = self.label_list.index(label)
 
         dict = json.load(open(json_path))
         retweets = dict['retweets']
         likes = dict['likes']
 
         retweets_label = -1
-        for r in RETWEETS:
+        for r in self.retweets_range:
             if retweets >= r:
                 retweets_label += 1
             else:
@@ -90,7 +94,7 @@ class TwitterMedia(data.Dataset):
         assert retweets_label >= 0, retweets_label
         
         likes_label = -1
-        for l in LIKES:
+        for l in self.likes_range:
             if likes >= l:
                 likes_label += 1
             else:
@@ -99,43 +103,43 @@ class TwitterMedia(data.Dataset):
 
         item = {
             'image': image,
-            'hashtag': hashtag_label,
+            'label': label_index,
             'retweets': retweets_label,
             'likes': likes_label
         }
         return item
 
-def get_stats(json_lst):
-    retweet_lst = []
-    like_lst = []
-    for j in range(len(json_lst)):
-        print(f'{j+1}/{len(json_lst)}')
-        json_file = json_lst[j]
-        dict = json.load(open(json_file))
-        retweet_count = dict['retweets']
-        like_count = dict['likes']
-        retweet_lst.append(retweet_count)
-        like_lst.append(like_count)
+    def get_stats(self, json_lst):
+        retweet_lst = []
+        like_lst = []
+        for j in range(len(json_lst)):
+            # print(f'{j+1}/{len(json_lst)}')
+            json_file = json_lst[j]
+            dict = json.load(open(json_file))
+            retweet_count = dict['retweets']
+            like_count = dict['likes']
+            retweet_lst.append(retweet_count)
+            like_lst.append(like_count)
 
-    retweet_count_lst = []
-    for i in range(len(RETWEETS)-1):
-        min_bound = RETWEETS[i]
-        max_bound = RETWEETS[i+1]
-        count = len([x for x in retweet_lst if min_bound <= x < max_bound])
-        retweet_count_lst.append(count)
+        retweet_count_lst = []
+        for i in range(len(self.retweets_range)-1):
+            min_bound = self.retweets_range[i]
+            max_bound = self.retweets_range[i+1]
+            count = len([x for x in retweet_lst if min_bound <= x < max_bound])
+            retweet_count_lst.append(count)
 
-    like_count_lst = []
-    for i in range(len(LIKES)-1):
-        min_bound = LIKES[i]
-        max_bound = LIKES[i+1]
-        count = len([x for x in like_lst if min_bound <= x < max_bound])
-        like_count_lst.append(count)
+        like_count_lst = []
+        for i in range(len(self.likes_range)-1):
+            min_bound = self.likes_range[i]
+            max_bound = self.likes_range[i+1]
+            count = len([x for x in like_lst if min_bound <= x < max_bound])
+            like_count_lst.append(count)
 
-    ret = {
-        'retweet_count_lst': retweet_count_lst,
-        'like_count_lst': like_count_lst
-    }
-    return ret
+        ret = {
+            'retweets_count_list': retweet_count_lst,
+            'likes_count_list': like_count_lst
+        }
+        return ret
 
 
 def create_iterator(dataset, batch_size, shuffle):
@@ -158,7 +162,7 @@ def create_datasets(opt):
         batch_size=opt.batch_size,
         num_workers=opt.num_threads,
         shuffle=True,
-        pin_memory=True,
+        pin_memory=False,
         drop_last=True,
     )
 

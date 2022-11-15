@@ -1,17 +1,11 @@
-from collections import defaultdict
-import random
-random.seed(0)
-
 import torch
 import torch.nn as nn
-import torch.utils.data as data
-
 import pytorch_lightning as pl
-
 import clip
 
-import datasets
-
+def generate_weights(counts):
+    weights = torch.Tensor([sum(counts) / (len(counts) * c) for c in counts])
+    return weights
 
 class CLIPPredictor(pl.LightningModule):
     def __init__(self, opt, train_set_stats):
@@ -34,14 +28,14 @@ class CLIPPredictor(pl.LightningModule):
             nn.Dropout(0.2),
         )
 
-        # predict hashtag label
-        self.hashtag_head = nn.Sequential(
+        # predict label
+        self.label_head = nn.Sequential(
             nn.Linear(128, 64),
             #nn.ReLU(),
             nn.Dropout(0.1),
             nn.Linear(64, 16),
             #nn.ReLU(),
-            nn.Linear(16, len(datasets.HASHTAGS)),
+            nn.Linear(16, len(opt.label_list)),
         )
 
         # predict retweet count range
@@ -51,7 +45,7 @@ class CLIPPredictor(pl.LightningModule):
             nn.Dropout(0.1),
             nn.Linear(64, 16),
             #nn.ReLU(),
-            nn.Linear(16, len(datasets.RETWEETS)-1),
+            nn.Linear(16, len(opt.retweets_range)),
         )
 
         # predict like count range
@@ -61,25 +55,19 @@ class CLIPPredictor(pl.LightningModule):
             nn.Dropout(0.1),
             nn.Linear(64, 16),
             #nn.ReLU(),
-            nn.Linear(16, len(datasets.LIKES)-1),
+            nn.Linear(16, len(opt.likes_range)),
         )
 
         # handle unbalanced data
-        self.hashtag_criterion = nn.CrossEntropyLoss()
-
-        retweet_weights = train_set_stats['retweet_count_lst']
-        retweet_weights = torch.Tensor([sum(retweet_weights) / (len(retweet_weights) * w) for w in retweet_weights])
-        self.retweet_criterion = nn.CrossEntropyLoss(weight=retweet_weights)
-
-        like_weights = train_set_stats['like_count_lst']
-        like_weights = torch.Tensor([sum(like_weights) / (len(like_weights) * w) for w in like_weights])
-        self.like_criterion = nn.CrossEntropyLoss(weight=like_weights)
+        self.label_criterion = nn.CrossEntropyLoss(weight=generate_weights(train_set_stats['label_count_list']))
+        self.retweet_criterion = nn.CrossEntropyLoss(weight=generate_weights(train_set_stats['retweets_count_list']))
+        self.like_criterion = nn.CrossEntropyLoss(weight=generate_weights(train_set_stats['likes_count_list']))
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
             filter(lambda p: p.requires_grad,
                 list(self.shared.parameters()) + \
-                list(self.hashtag_head.parameters()) + \
+                list(self.label_head.parameters()) + \
                 list(self.retweet_head.parameters()) + \
                 list(self.like_head.parameters())),
             lr=self.opt.lr,
@@ -89,12 +77,12 @@ class CLIPPredictor(pl.LightningModule):
     def forward(self, x):
         inputs = self.clip_model(x)
         shared_info = self.shared(inputs)
-        pred_hashtags = self.hashtag_head(shared_info)
+        pred_labels = self.label_head(shared_info)
         pred_retweets = self.retweet_head(shared_info)
         pred_likes = self.like_head(shared_info)
 
         outputs = {
-            'hashtag': pred_hashtags, #torch.max(pred_hashtags, 1)[1],
+            'label': pred_labels, #torch.max(pred_labels, 1)[1],
             'retweets': pred_retweets,
             'likes': pred_likes,
         }
@@ -102,34 +90,38 @@ class CLIPPredictor(pl.LightningModule):
 
     def one_step(self, items, split):
         images = items['image'].to(self.device)
-        gt_hashtags = items['hashtag'].to(self.device)
+        gt_labels = items['label'].to(self.device)
         gt_retweets = items['retweets'].to(self.device)
         gt_likes = items['likes'].to(self.device)
 
         outputs = self(images)
-        pred_hashtags = outputs['hashtag']
+        pred_labels = outputs['label']
         pred_retweets = outputs['retweets']
         pred_likes = outputs['likes']
 
-        losses = {}
-        losses[f'{split}/hashtag_loss'] = self.hashtag_criterion(pred_hashtags, gt_hashtags).mean()
-        losses[f'{split}/retweets_loss'] = self.retweet_criterion(pred_retweets, gt_retweets).mean()
-        losses[f'{split}/likes_loss'] = self.like_criterion(pred_likes, gt_likes).mean()
-        losses[f'{split}/total'] = losses[f'{split}/hashtag_loss'] + losses[f'{split}/retweets_loss'] + losses[f'{split}/likes_loss']
+        ret = {}
+        ret[f'{split}/label_accu'] = (torch.max(pred_labels, 1)[1] == gt_labels).sum() / gt_labels.shape[0]
+        ret[f'{split}/retweets_accu'] = (torch.max(pred_retweets, 1)[1] == gt_retweets).sum() / gt_retweets.shape[0]
+        ret[f'{split}/likes_accu'] = (torch.max(pred_likes, 1)[1] == gt_likes).sum() / gt_likes.shape[0]
 
-        return losses
+        ret[f'{split}/label_loss'] = self.label_criterion(pred_labels, gt_labels).mean()
+        ret[f'{split}/retweets_loss'] = self.retweet_criterion(pred_retweets, gt_retweets).mean()
+        ret[f'{split}/likes_loss'] = self.like_criterion(pred_likes, gt_likes).mean()
+        ret[f'{split}/total_loss'] = ret[f'{split}/label_loss'] + ret[f'{split}/retweets_loss'] + ret[f'{split}/likes_loss']
+
+        return ret
 
     def training_step(self, batch, batch_idx):
         split = 'train'
-        losses = self.one_step(batch, split)
-        self.log_dict(losses, sync_dist=True)
-        return losses[f'{split}/total']
+        ret = self.one_step(batch, split)
+        self.log_dict(ret, sync_dist=True)
+        return ret[f'{split}/total_loss']
 
     def validation_step(self, batch, batch_idx):
         split = 'val'
-        losses = self.one_step(batch, split)
-        self.log_dict(losses, sync_dist=True)
-        return losses[f'{split}/total']
+        ret = self.one_step(batch, split)
+        self.log_dict(ret, sync_dist=True)
+        return ret[f'{split}/total_loss']
 
     def validation_epoch_end(self, outputs):
         print('average total loss on validation set:', sum(outputs) / len(outputs))
