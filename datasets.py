@@ -7,9 +7,6 @@ from PIL import Image
 import torch.utils.data as data
 import clip
 
-# HASHTAGS = ['#food', '#hotel', '#shoes']
-# USERS = ['@WholeFoods', '@bookingcom', '@GUESS']
-
 class TwitterMedia(data.Dataset):
     def __init__(self, opt, split):
         super().__init__()
@@ -17,7 +14,7 @@ class TwitterMedia(data.Dataset):
         self.label_list = opt.label_list
         self.label_list.sort()
 
-        self.retweets_range = opt.retweets_range + [float('inf')]
+        self.retweets_range = opt.retweets_range + [float('inf')] # 0 0.001 0.01 0.1 1 # 0 1 5 10
         self.likes_range = opt.likes_range + [float('inf')]
 
         lsts = [glob.glob(f'{opt.data_dir}/{label}/images/*.jpg', recursive=True) for label in self.label_list]
@@ -116,8 +113,9 @@ class TwitterMedia(data.Dataset):
             # print(f'{j+1}/{len(json_lst)}')
             json_file = json_lst[j]
             dict = json.load(open(json_file))
-            retweet_count = dict['retweets']
-            like_count = dict['likes']
+            follower_count = dict['followers']
+            retweet_count = min(dict['retweets'] / follower_count, 1.)
+            like_count = min(dict['likes'] / follower_count, 1.)
             retweet_lst.append(retweet_count)
             like_lst.append(like_count)
 
