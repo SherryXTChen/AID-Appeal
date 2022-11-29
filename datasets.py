@@ -3,9 +3,13 @@ import glob
 import json
 import itertools
 from PIL import Image
+import random
+random.seed(0)
 
+import torch
 import torch.utils.data as data
 import clip
+
 
 class TwitterMedia(data.Dataset):
     def __init__(self, opt, split):
@@ -140,6 +144,57 @@ class TwitterMedia(data.Dataset):
         return ret
 
 
+class FiveHundredPX(data.Dataset):
+    def __init__(self, opt, split):
+        super().__init__()
+        self.opt = opt
+        image_lst = glob.glob(f'{opt.data_dir}/*.jpg', recursive=True)
+
+        func = lambda f: 'adobe_stock-delicious_food-' in os.path.basename(f) or 'food-101-' in os.path.basename(f)
+        appeal_lst = [f for f in image_lst if func(f)]
+        unappeal_lst = [f for f in image_lst if not func(f)]
+        assert len(image_lst) == len(set(appeal_lst + unappeal_lst)) and len(set(appeal_lst + unappeal_lst)) == len(appeal_lst + unappeal_lst)
+
+        assert split in ['train', 'val'], split
+        if split == 'train':
+            appeal_lst = appeal_lst[:int(0.8 * len(appeal_lst))]
+            unappeal_lst = unappeal_lst[:int(0.8 * len(unappeal_lst))]
+        else:
+            appeal_lst = appeal_lst[int(0.8 * len(appeal_lst)):]
+            unappeal_lst = unappeal_lst[int(0.8 * len(unappeal_lst)):]
+
+        self.image_lst = [(f, random.choice(unappeal_lst)) for f in appeal_lst] + \
+            [(random.choice(appeal_lst), f) for f in unappeal_lst]
+        # self.image_lst = list(itertools.product(appeal_lst, unappeal_lst))
+
+        _, self.clip_preprocess = clip.load('ViT-L/14', device='cpu')
+        
+    def __len__(self):
+        return len(self.image_lst)
+
+    def __getitem__(self, index):
+        # get appeal image
+        appeal_path, unappeal_path = self.image_lst[index]
+        appeal_image = Image.open(appeal_path).convert('RGB')
+        appeal_image = self.clip_preprocess(appeal_image)
+
+        unappeal_image = Image.open(unappeal_path).convert('RGB')
+        unappeal_image = self.clip_preprocess(unappeal_image)
+
+        if random.choice([True,False]):
+            images = torch.cat((appeal_image, unappeal_image), axis=0)
+            label = 0
+        else:
+            images = torch.cat((unappeal_image, appeal_image), axis=0)
+            label = 1
+
+        item = {
+            'images': images,
+            'label': label,
+        }
+        return item
+
+
 def create_iterator(dataset, batch_size, shuffle):
     while True:
         sample_loader = data.DataLoader(
@@ -153,8 +208,8 @@ def create_iterator(dataset, batch_size, shuffle):
             yield item
 
 def create_datasets(opt):
-    train_set = TwitterMedia(opt, 'train')
-    train_set_stats = train_set.stats
+    train_set = FiveHundredPX(opt, 'train')
+    # train_set_stats = train_set.stats
     train_loader = data.DataLoader(
         train_set,
         batch_size=opt.batch_size,
@@ -164,7 +219,7 @@ def create_datasets(opt):
         drop_last=True,
     )
 
-    val_set = TwitterMedia(opt, 'val')
+    val_set = FiveHundredPX(opt, 'val')
     val_loader = data.DataLoader(
         val_set,
         batch_size=opt.batch_size,
@@ -172,4 +227,6 @@ def create_datasets(opt):
         shuffle=False,
         pin_memory=False)
 
-    return train_loader, val_loader, train_set_stats
+    print(f'train samples: {len(train_set)}, val samples: {len(val_set)}')
+
+    return train_loader, val_loader

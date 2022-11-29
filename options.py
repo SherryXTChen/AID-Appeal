@@ -7,9 +7,9 @@ class BaseOptions():
     def initialize(self, parser):
         parser.add_argument('--name', type=str, required=True, help='name of experiment')
         parser.add_argument('--data_dir', type=str, required=True, help='path to data')
-        parser.add_argument('--label_list', nargs='+', type=str, required=True, help='dataset labels')
-        parser.add_argument('--retweets_range', nargs='+', type=float, required=True, help='retweets range list')
-        parser.add_argument('--likes_range', nargs='+', type=float, required=True, help='likes range list')
+        # parser.add_argument('--label_list', nargs='+', type=str, required=True, help='dataset labels')
+        # parser.add_argument('--retweets_range', nargs='+', type=float, required=True, help='retweets range list')
+        # parser.add_argument('--likes_range', nargs='+', type=float, required=True, help='likes range list')
        
         parser.add_argument('--out_dir', type=str, default='ckpts', help='path to resultsroot')
 
