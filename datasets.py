@@ -15,10 +15,10 @@ class Food(data.Dataset):
     def __init__(self, opt, split):
         super().__init__()
         self.opt = opt
-        appeal_lst = glob.glob(f'{opt.data_dir}/appealing/*/*.jp*', recursive=True)
-        unappeal_lst = glob.glob(f'{opt.data_dir}/unappealing/*/*.jp*', recursive=True)
-        # appeal_lst = glob.glob(f'{opt.data_dir}/Cloudinary_Archive_*/*.jp*', recursive=True)
-        # unappeal_lst = glob.glob(f'{opt.data_dir}/Cloudinary_Rejected_*/*.jp*', recursive=True)
+        # appeal_lst = glob.glob(f'{opt.data_dir}/appealing/*/*.jp*', recursive=True)
+        # unappeal_lst = glob.glob(f'{opt.data_dir}/unappealing/*/*.jp*', recursive=True)
+        appeal_lst = glob.glob(f'{opt.data_dir}/Cloudinary_Archive_*/*.jp*', recursive=True)
+        unappeal_lst = glob.glob(f'{opt.data_dir}/Cloudinary_Rejected_*/*.jp*', recursive=True)
 
         assert split in ['train', 'val'], split
         if split == 'train':
@@ -64,8 +64,13 @@ class FoodAppeal(data.Dataset):
     def __init__(self, opt):
         super().__init__()
         self.opt = opt
+        '''
         image_lst = glob.glob(f'{opt.data_dir}/appealing/adobe_stock-*/*.jp*', recursive=True)[:100] + \
             glob.glob(f'{opt.data_dir}/appealing/google-*/*.jp*', recursive=True)[:100]
+        '''
+        # appeal_lst = glob.glob(f'{opt.data_dir}/Cloudinary_Archive_*/*.jp*', recursive=True)[:100]
+        image_lst = glob.glob(f'{opt.data_dir}/Cloudinary_Rejected_*/*.jp*', recursive=True)[:200]
+        # image_lst = appeal_lst + unappeal_lst
 
         _, self.clip_preprocess = clip.load('ViT-L/14', device='cpu')
 
