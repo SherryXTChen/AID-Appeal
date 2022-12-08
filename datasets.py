@@ -30,7 +30,7 @@ class Food(data.Dataset):
         # 80 % train, 20 % val, last 10 samples test
         lst_split = []
         for root in root_list:
-            dir_lst = glob.glob(f'{root}/images/*/', recursive=True)
+            dir_lst = glob.glob(f'{root}/*/', recursive=True)
             print(root, len(dir_lst))
 
             for dir in dir_lst:
@@ -74,17 +74,14 @@ class Food(data.Dataset):
         return item
 
 
-class FoodAppeal(data.Dataset):
+class FoodRank(data.Dataset):
     def __init__(self, opt):
         super().__init__()
         self.opt = opt
-        '''
-        image_lst = glob.glob(f'{opt.data_dir}/appealing/adobe_stock-*/*.jp*', recursive=True)[:100] + \
-            glob.glob(f'{opt.data_dir}/appealing/google-*/*.jp*', recursive=True)[:100]
-        '''
-        # appeal_lst = glob.glob(f'{opt.data_dir}/Cloudinary_Archive_*/*.jp*', recursive=True)[:100]
-        image_lst = glob.glob(f'{opt.data_dir}/Cloudinary_Rejected_*/*.jp*', recursive=True)[:200]
-        # image_lst = appeal_lst + unappeal_lst
+
+        appeal_lst = self.setup(opt.appeal_root_list, 'val')
+        unappeal_lst = self.setup(opt.unappeal_root_list, 'val')
+        image_lst = appeal_lst + unappeal_lst
 
         _, self.clip_preprocess = clip.load('ViT-L/14', device='cpu')
 
@@ -97,12 +94,28 @@ class FoodAppeal(data.Dataset):
             image = Image.open(image_path).convert('RGB')
             image = self.clip_preprocess(image)
             self.image_lst.append((image_path, image))
-        
+
+    def setup(self, root_list, split):
+        # 80 % train, 20 % val, last 10 samples test
+        lst_split = []
+        for root in root_list:
+            dir_lst = glob.glob(f'{root}/*/', recursive=True)
+            if len(dir_lst) == 0:
+                dir_lst = [root]
+            
+            print(root, len(dir_lst))
+
+            for dir in dir_lst:
+                lst =  [os.path.join(dir, f) for f in os.listdir(dir) if f.endswith('.jpg')]
+                lst.sort()
+                lst_split += lst[:min(self.opt.num_samples, len(lst))]
+
+        return lst_split
+
     def __len__(self):
         return len(self.image_lst)
 
     def __getitem__(self, index):
-        # get appeal image
         ref_image_path, ref_image = self.image_lst[index]
 
         image_lst = self.image_lst[:index] + self.image_lst[index+1:]        

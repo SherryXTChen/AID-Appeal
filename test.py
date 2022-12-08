@@ -18,7 +18,8 @@ if __name__ == '__main__':
     out_dir = opt.rank_dir
     utils.mkdir(out_dir)
 
-    test_set = datasets.FoodAppeal(opt)
+    test_set = datasets.FoodRank(opt)
+    print('test samples:', len(test_set))
     model = models.CLIPComparator(opt)
 
     state = torch.load( f'{opt.out_dir}/last.ckpt', map_location='cpu')
