@@ -55,6 +55,6 @@ if __name__ == '__main__':
 
     train_loader, val_loader = datasets.create_datasets(opt)
     model = models.CLIPComparator(opt)
-    trainer.validate(model, val_loader)
+    # trainer.validate(model, val_loader)
     trainer.fit(model, train_loader, val_loader)
     trainer.validate(model, val_loader)

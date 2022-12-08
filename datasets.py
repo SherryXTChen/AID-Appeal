@@ -15,24 +15,32 @@ class Food(data.Dataset):
     def __init__(self, opt, split):
         super().__init__()
         self.opt = opt
-        # appeal_lst = glob.glob(f'{opt.data_dir}/appealing/*/*.jp*', recursive=True)
-        # unappeal_lst = glob.glob(f'{opt.data_dir}/unappealing/*/*.jp*', recursive=True)
-        appeal_lst = glob.glob(f'{opt.data_dir}/Cloudinary_Archive_*/*.jp*', recursive=True)
-        unappeal_lst = glob.glob(f'{opt.data_dir}/Cloudinary_Rejected_*/*.jp*', recursive=True)
-
         assert split in ['train', 'val'], split
-        if split == 'train':
-            appeal_lst = appeal_lst[:int(0.8 * len(appeal_lst))]
-            unappeal_lst = unappeal_lst[:int(0.8 * len(unappeal_lst))]
-        else:
-            appeal_lst = appeal_lst[int(0.8 * len(appeal_lst)):]
-            unappeal_lst = unappeal_lst[int(0.8 * len(unappeal_lst)):]
+
+        appeal_lst = self.setup(opt.appeal_root_list, split)
+        unappeal_lst = self.setup(opt.unappeal_root_list, split)
 
         self.image_lst = [(f, random.choice(unappeal_lst)) for f in appeal_lst] + \
             [(random.choice(appeal_lst), f) for f in unappeal_lst]
         # self.image_lst = list(itertools.product(appeal_lst, unappeal_lst))
 
         _, self.clip_preprocess = clip.load('ViT-L/14', device='cpu')
+
+    def setup(self, root_list, split):
+        # 80 % train, 20 % val, last 10 samples test
+        lst_split = []
+        for root in root_list:
+            dir_lst = glob.glob(f'{root}/images/*/', recursive=True)
+            print(root, len(dir_lst))
+
+            for dir in dir_lst:
+                lst =  [os.path.join(dir, f) for f in os.listdir(dir) if f.endswith('.jpg')]
+                lst.sort()
+                if split == 'train':
+                    lst_split += lst[:int(0.8 * len(lst))]
+                else:
+                    lst_split +=  lst[int(0.8 * len(lst)):-10]
+        return lst_split
         
     def __len__(self):
         return len(self.image_lst)
@@ -40,18 +48,24 @@ class Food(data.Dataset):
     def __getitem__(self, index):
         # get appeal image
         appeal_path, unappeal_path = self.image_lst[index]
+
         appeal_image = Image.open(appeal_path).convert('RGB')
+        w, h = appeal_image.size
+        appeal_image = appeal_image.resize((min(h, w), min(h, w)))
         appeal_image = self.clip_preprocess(appeal_image)
 
         unappeal_image = Image.open(unappeal_path).convert('RGB')
+        w, h = unappeal_image.size
+        unappeal_image = unappeal_image.resize((min(h, w), min(h, w)))
         unappeal_image = self.clip_preprocess(unappeal_image)
 
-        if random.choice([True,False]):
-            images = torch.cat((appeal_image, unappeal_image), axis=0)
-            label = 0
-        else:
+        flip = random.choice([True,False])
+        if flip:
             images = torch.cat((unappeal_image, appeal_image), axis=0)
             label = 1
+        else:
+            images = torch.cat((appeal_image, unappeal_image), axis=0)
+            label = 0   
 
         item = {
             'images': images,

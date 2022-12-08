@@ -6,7 +6,8 @@ class BaseOptions():
 
     def initialize(self, parser):
         parser.add_argument('--name', type=str, required=True, help='name of experiment')
-        parser.add_argument('--data_dir', type=str, required=True, help='path to data')
+        parser.add_argument('--appeal_root_list', nargs='+', type=str, required=True, help='path to appealing images')
+        parser.add_argument('--unappeal_root_list', nargs='+', type=str, required=True, help='path to unappealing images')
         parser.add_argument('--out_dir', type=str, default='ckpts', help='path to training results')
         parser.add_argument('--rank_dir', type=str, default='test', help='path to ranked results')
 
