@@ -104,12 +104,16 @@ class FoodRank(data.Dataset):
                 dir_lst = [root]
             
             print(root, len(dir_lst))
+            root_lst = []
 
             for dir in dir_lst:
                 lst =  [os.path.join(dir, f) for f in os.listdir(dir) if f.endswith('.jpg')]
                 lst.sort()
-                lst_split += lst[:min(self.opt.num_samples, len(lst))]
-
+                root_lst +=  lst[int(0.8 * len(lst)):-10]
+            
+            random.shuffle(root_lst)
+            lst_split += root_lst[:min(len(root_lst), self.opt.num_samples)]
+        
         return lst_split
 
     def __len__(self):
@@ -119,7 +123,7 @@ class FoodRank(data.Dataset):
         ref_image_path, ref_image = self.image_lst[index]
 
         image_lst = self.image_lst[:index] + self.image_lst[index+1:]        
-        image_lst = [x[1] for x in image_lst]
+        image_lst = [x for x in image_lst]
 
         item = {
             'ref_image': ref_image,
