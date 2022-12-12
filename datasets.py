@@ -61,14 +61,19 @@ class Food(data.Dataset):
 
         flip = random.choice([True,False])
         if flip:
-            images = torch.cat((unappeal_image, appeal_image), axis=0)
+            # images = torch.cat((unappeal_image, appeal_image), axis=0)
+            image1 = unappeal_image
+            image2 = appeal_image
             label = 1
         else:
-            images = torch.cat((appeal_image, unappeal_image), axis=0)
+            # images = torch.cat((appeal_image, unappeal_image), axis=0)
+            image1 = appeal_image
+            image2 = unappeal_image
             label = 0   
 
         item = {
-            'images': images,
+            'image1': image1,
+            'image2': image2,
             'label': label,
         }
         return item
@@ -81,19 +86,9 @@ class FoodRank(data.Dataset):
 
         appeal_lst = self.setup(opt.appeal_root_list, 'val')
         unappeal_lst = self.setup(opt.unappeal_root_list, 'val')
-        image_lst = appeal_lst + unappeal_lst
+        self.image_lst = appeal_lst + unappeal_lst
 
         _, self.clip_preprocess = clip.load('ViT-L/14', device='cpu')
-
-        self.image_lst = []
-        count = 0
-        for image_path in image_lst:
-            count += 1
-            print(f'{count}/{len(image_lst)}')
-
-            image = Image.open(image_path).convert('RGB')
-            image = self.clip_preprocess(image)
-            self.image_lst.append((image_path, image))
 
     def setup(self, root_list, split):
         # 80 % train, 20 % val, last 10 samples test
@@ -115,20 +110,21 @@ class FoodRank(data.Dataset):
             lst_split += root_lst[:min(len(root_lst), self.opt.num_samples)]
         
         return lst_split
-
+    
     def __len__(self):
         return len(self.image_lst)
 
     def __getitem__(self, index):
-        ref_image_path, ref_image = self.image_lst[index]
+        image_path = self.image_lst[index]
 
-        image_lst = self.image_lst[:index] + self.image_lst[index+1:]        
-        image_lst = [x for x in image_lst]
+        image = Image.open(image_path).convert('RGB')
+        w, h = image.size
+        image = image.resize((min(h, w), min(h, w)))
+        image = self.clip_preprocess(image)
 
         item = {
-            'ref_image': ref_image,
-            'image_lst': image_lst,
-            'ref_image_path': ref_image_path,
+            'image': image,
+            'image_path': image_path,
         }
         return item
 
