@@ -50,16 +50,20 @@ def visualize():
     h = 100
     w = 100
     bound_size = 5
-    samples = 10
+    num_samples = 100000000
     loc = 'left'
 
+    appeal_count = 0
+    unappeal_count = 0
+    count = 0
     with open(out_path, "w") as outputfile:
         for i in range(0, 100, 10):
             lst = img_lst[int(len(img_lst) * i / 100):int(len(img_lst) * (i+10) / 100)]
-            if len(lst) > samples:
-                lst = lst[:samples]
+            lst = lst[:min(len(lst), num_samples)]
 
             for img_path in lst:
+                count += 1
+                print(f'{count}/{len(img_lst)}')
                 img = Image.open(img_path).convert('RGB').resize((w-2*bound_size, h-2*bound_size))
                 img_name = os.path.basename(img_path)
 
@@ -67,9 +71,11 @@ def visualize():
                 color = None
                 if any(t in img_name for t in appeal_tags):
                     color = 'green'
+                    appeal_count += 1
                 else:
                     assert any(t in img_name for t in unappeal_tags), img_path
                     color = 'red'
+                    unappeal_count += 1
                 # print(img_path, color)
 
                 img = ImageOps.expand(img,border=bound_size,fill=color)
@@ -83,6 +89,8 @@ def visualize():
             line = generate_image_html(lst, loc, h, w)
             outputfile.write(line)
 
+    print('appeal_count', appeal_count)
+    print('unappeal_count', unappeal_count)
     os.system(f'open {out_path}')
 
 
