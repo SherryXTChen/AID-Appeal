@@ -163,5 +163,72 @@ def user_study():
     print('model accuracy:', accu / num_pairs)
 
 
+def get_textural_inversion_sample():
+    in_dir = sys.argv[2]
+    out_dir = sys.argv[3]
+    if not os.path.isdir(out_dir):
+        os.makedirs(out_dir)
+
+
+    img_lst =  glob.glob(f'{in_dir}/*.jpg', recursive=True)
+    img_lst.sort()
+
+    appeal_lst = None
+    unappeal_lst = None
+
+    for i in range(len(img_lst)):
+        img_path =  img_lst[i]
+        img_name = os.path.basename(img_path)
+        if any(t in img_name for t in unappeal_tags):
+            appeal_lst = img_lst[:i]
+            unappeal_lst = img_lst[i:]
+            print('appeal rank threshold', i+1)
+            break
+
+    # appeal_score 10 - 5.1
+    appeal_score = [float(os.path.basename(f).split('_')[1].replace('score=', ''))
+        for f in appeal_lst]
+    # unappeal_score 4.9 - 0
+    unappeal_score = [float(os.path.basename(f).split('_')[1].replace('score=', ''))
+        for f in unappeal_lst]
+
+    print(appeal_score[0], appeal_score[-1], unappeal_score[0], unappeal_score[-1])
+
+    appeal_score_norm_func = lambda x: (x - appeal_score[-1]) / (appeal_score[0] - appeal_score[-1]) * (10 - 5.1) + 5.1
+    unappeal_score_norm_func =  lambda x: (x - unappeal_score[-1]) / (unappeal_score[0] - unappeal_score[-1]) * (4.9 - 0)
+   
+    appeal_score = [appeal_score_norm_func(x) for x in appeal_score]
+    unappeal_score = [unappeal_score_norm_func(x) for x in unappeal_score]
+    score_lst = appeal_score + unappeal_score
+
+    score_dict = {
+        (10, 8) : 'excellent',
+        (8, 6) : 'good', 
+        (6, 4) : 'neural',
+        (4, 2) : 'bad',
+        (2, -1) : 'horrible',
+    }
+
+    for k, v in score_dict.items():
+        out_dir_v = os.path.join(out_dir, v)
+        if not os.path.isdir(out_dir_v):
+            os.mkdir(out_dir_v)
+
+    for i in range(len(img_lst)):
+        print(f'{i+1}/{len(img_lst)}')
+        img_path = img_lst[i]
+        img_path_lst = os.path.basename(img_path).split('_')
+        score = score_lst[i]
+        img_path_lst.insert(2, f'normscore={score}')
+        img_path = '_'.join(img_path_lst)
+
+        for k, v in score_dict.items():
+            if k[0] >= score > k[1]:
+                img_path = os.path.join(out_dir, v, img_path)
+                shutil.move(img_lst[i], img_path)
+                break
+        print(img_path)
+
+
 if __name__ == '__main__':
     eval(sys.argv[1] + '()')
