@@ -34,19 +34,18 @@ if __name__ == '__main__':
         image = item['image'].unsqueeze(0).to(device)
         image_path = item['image_path']
 
-        score = model(image)
+        score = model(image)[0][0]
         image_score_lst.append(
             (
                 image_path,
                 score,
             )
         )
-        # break
 
-    image_score_lst.sort(key = operator.itemgetter(1))
-    for i in range(len(image_score_lst)-1, -1, -1):
+    image_score_lst = sorted(image_score_lst, key=lambda x: -x[1])
+    for i in range(len(image_score_lst)):
         rank = i+1
         in_f, score = image_score_lst[i]
         dir_name, base_name = tuple(in_f.split('/')[-2:])
-        out_f = os.path.join(out_dir, f'rank={str(rank).zfill(5)}_score={score}_{dir_name}_{base_name}')
+        out_f = os.path.join(out_dir, f'rank={str(rank).zfill(10)}_score={score}_{dir_name}_{base_name}')
         shutil.copy(in_f, out_f)
