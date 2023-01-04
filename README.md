@@ -50,7 +50,7 @@ python train_v0.py --name v0_concate --model_type 'concate' --loss_type 'pair' -
 - During inference, the network takes an image and outputs a score, which is the appeal score of this image.
 
 ```
-python test.py --name v0_siamese_pair --model_type 'siamese' --loss_type 'pair' --appeal_root_list ImageAppeal/adobe_stock/food-101/ ImageAppeal/food-101/ --unappeal_root_list ImageAppeal/adobe_stock/unappealing/ ImageAppeal/google/ --num_epochs 2
+python test.py --name v0_siamese_pair --model_type 'siamese' --loss_type 'pair' --appeal_root_list ImageAppeal/adobe_stock/food-101/ ImageAppeal/food-101/ --unappeal_root_list ImageAppeal/adobe_stock/unappealing/ ImageAppeal/google/
 ```
 
 ### Siamese Network + Triplet loss
@@ -58,9 +58,7 @@ python test.py --name v0_siamese_pair --model_type 'siamese' --loss_type 'pair' 
 - Same as above
 
 ```
-python train_v0.py --name v0_siamese_triplet --model_type 'siamese' --loss_type 'triplet' --appeal_root_list ImageAppeal/adobe_stock/food-101/ ImageAppeal/food-101/ --unappeal_root_list ImageAppeal/adobe_stock/unappealing/ ImageAppeal/google/ --num_epochs 1
-
-python train_v0.py --name v0_siamese_triplet --model_type 'siamese' --loss_type 'triplet' --appeal_root_list ImageAppeal/adobe_stock/food-101/ ImageAppeal/food-101/ --unappeal_root_list ImageAppeal/adobe_stock/unappealing/ ImageAppeal/google/ --num_epochs 2
+python test.py --name v0_siamese_triplet --model_type 'siamese' --loss_type 'triplet' --appeal_root_list ImageAppeal/adobe_stock/food-101/ ImageAppeal/food-101/ --unappeal_root_list ImageAppeal/adobe_stock/unappealing/ ImageAppeal/google/
 ```
 
 ### Comparator Network
@@ -68,7 +66,7 @@ python train_v0.py --name v0_siamese_triplet --model_type 'siamese' --loss_type 
 - To get appeal score of Image I, compare it with k randomly selected images by sending each with Image I to the network at a time. The percentage of images out of these k images where Image I is more appealing accordingly to the model is the appeal score of Image I.
 
 ```
-python train_v0.py --name v0_concate --model_type 'concate' --loss_type 'pair' --appeal_root_list ImageAppeal/adobe_stock/food-101/ ImageAppeal/food-101/ --unappeal_root_list ImageAppeal/adobe_stock/unappealing/ ImageAppeal/google/ --num_epochs 2
+python test.py --name v0_concate --model_type 'concate' --loss_type 'pair' --appeal_root_list ImageAppeal/adobe_stock/food-101/ ImageAppeal/food-101/ --unappeal_root_list ImageAppeal/adobe_stock/unappealing/ ImageAppeal/google/
 ```
 
 ### Visualization
