@@ -1,4 +1,5 @@
 import os
+import torch
 import torch.utils.data as data
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -8,7 +9,7 @@ import options
 import models
 import datasets
 
-if __name__ == '__main__':
+def setup():
     opt = options.BaseOptions().gather_options()
     opt.out_dir = os.path.join(opt.out_dir, opt.name)
     utils.mkdir(opt.out_dir)
@@ -22,14 +23,20 @@ if __name__ == '__main__':
         filename = '{epoch:02d}-{step}',
         save_last = True,
         save_top_k = 1,
-        mode='min',
-        every_n_train_steps = 1e5 // opt.batch_size,
+        save_on_train_epoch_end = True,
     )
 
-    ckpt_path = f'{opt.out_dir}/last.ckpt'
+    model_type = getattr(models, f'CLIPComparator_{opt.model_type.capitalize()}')
+    model = model_type(opt)
+
+    ckpt_path = opt.resume
     if os.path.exists(ckpt_path):
-        resume = ckpt_path
-    else:
+        print('resume from', ckpt_path)
+        state = torch.load(ckpt_path, map_location='cpu')
+        model.load_state_dict(state['state_dict'], strict=False)
+
+    resume = os.path.join(opt.out_dir, 'last.ckpt')
+    if not os.path.exists(resume):
         resume = None
     
     if opt.gpus > 1:
@@ -49,12 +56,7 @@ if __name__ == '__main__':
         resume_from_checkpoint=resume,
         callbacks = [checkpoint_callback],
         logger = tb_logger,
-        log_every_n_steps = 1,
-        check_val_every_n_epoch=1,
+        check_val_every_n_epoch=opt.num_epochs * 10,
     )
 
-    train_loader, val_loader = datasets.create_datasets(opt)
-    model = models.CLIPComparator(opt)
-    # trainer.validate(model, val_loader)
-    trainer.fit(model, train_loader, val_loader)
-    trainer.validate(model, val_loader)
+    return opt, trainer, model
