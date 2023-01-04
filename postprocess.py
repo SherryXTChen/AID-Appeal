@@ -54,7 +54,7 @@ def symlink_images():
         os.symlink(in_f, out_f)
 
 
-def generate_html_adobe_food_101():
+def generate_html_adobe_stock_food_101():
     in_dir = sys.argv[2]
     if in_dir[-1] == '/':
         in_dir = in_dir[:-1]
