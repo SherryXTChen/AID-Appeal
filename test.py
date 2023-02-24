@@ -1,85 +1,121 @@
 import os
+from tqdm import tqdm
 import random
 random.seed(0)
 
 import torch
 
-import utils
 import options
 import models
 import datasets
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-def rank_by_compare(test_set, i):
-    item = test_set[i]
-    image = item['image1'].unsqueeze(0).to(device)
-    with torch.no_grad():
-        feat1 = model.clip_model(image)
+@torch.no_grad()
+def rank_by_compare(model, item, vote_feature_list):
+    image = item['image'].unsqueeze(0).to(DEVICE)
+    feature = model.backbone(model.pretrained_model(image))
 
-    index_lst = list(range(len(test_set)))
-    index_lst.remove(i)
-    index_lst = random.sample(index_lst, opt.num_samples)
+    pred_label_total = 0
+    for vote_feature in vote_feature_list:
+        pred_label = model.head(torch.cat([feature, vote_feature], axis=-1)).mean().item()
+        pred_label_total += pred_label
 
-    feat2_lst = []
-    for j in index_lst:
-        image2 = test_set[j]['image1'].unsqueeze(0).to(device)
-        with torch.no_grad():
-            feat2 = model.clip_model(image2)
-        feat2_lst.append(feat2)
-
-    feat1_lst = torch.cat([feat1 for _ in range(opt.num_samples)], axis=0)
-    feat2_lst = torch.cat(feat2_lst, axis=0)
-
-    with torch.no_grad():
-        pred_labels = model(torch.cat([feat2_lst, feat1_lst], axis=-1))
-    vote = torch.sum(torch.max(pred_labels, 1)[1]).item()
-
-    in_f = item['image1_path']
-    score = vote / opt.num_samples
+    in_f = item['image_path']
+    score = pred_label_total / len(vote_feature_list)
 
     return in_f, score
 
-def rank_by_score(test_set, i):
-    item = test_set[i]
-    image = item['image1'].unsqueeze(0).to(device)
-    in_f = item['image1_path']
+@torch.no_grad()
+def get_features(model, image_set):
+    image_list = [item.unsqueeze(0).to(DEVICE) for item in image_set]
+    feature_list = []
+    for image in image_list:
+        feature = model.backbone(model.pretrained_model(image))
+        feature_list.append(feature)
+    return feature_list
+
+@torch.no_grad()
+def rank_by_score(model, item):
+    image = item['image'].unsqueeze(0).to(DEVICE)
+    in_f = item['image_path']
 
     with torch.no_grad():
-        score = model(image)[0][0]
+        score = model(image).item()
     return in_f, score
+
+def rank_part_1(opt):
+    opt = options.BaseOptions().gather_options()
+    out_dir = os.path.join('outputs', opt.name)
+    os.makedirs(out_dir, exist_ok=True)
+
+    model = models.CLIPComparator(opt)
+    ckpt_path = os.path.join(opt.out_dir, opt.name, 'last.ckpt')
+    state = torch.load(ckpt_path, map_location='cpu')
+    model.load_state_dict(state['state_dict'], strict=False)
+    model.eval()
+    model.to(DEVICE)
+
+    vote_features = None
+    out_total = open(os.path.join(out_dir, f'scores_all_all.txt'), 'w')
+
+    for set_type, split in [('synthetic', 'all'), ('real', 'all')]:
+        data_set = datasets.Relative2AbsoluteScoreDataset(opt, set_type, split)
+        
+        if vote_features == None:
+            print('number of voting images', len(data_set.vote_dataset))
+            vote_features = get_features(model, data_set.vote_dataset)
+
+        out = open(os.path.join(out_dir, f'scores_{set_type}_{split}.txt'), 'w')
+        for item in tqdm(data_set):
+            in_f, pred_score = rank_by_compare(model, item, vote_features)
+            gt_score = item['image_score']
+            line = f'{in_f}\t{gt_score}\t{pred_score}\n'
+            out.write(line)
+            out_total.write(line)
+        out.close()
+
+    out_total.close()
+
+    print('Finish part 1 inference')
+
+def rank_part_2(opt):
+    opt = options.BaseOptions().gather_options()
+    out_dir = os.path.join('outputs', opt.name)
+    os.makedirs(out_dir, exist_ok=True)
+
+    model = models.CLIPScorer(opt)
+    ckpt_path = os.path.join(opt.out_dir, opt.name, 'last.ckpt')
+    state = torch.load(ckpt_path, map_location='cpu')
+    model.load_state_dict(state['state_dict'], strict=False)
+    model.eval()
+    model.to(DEVICE)
+
+    out_total = open(os.path.join(out_dir, f'scores_all_all.txt'), 'w')
+
+    for set_type, split in [('synthetic', 'all'), ('real', 'all')]:
+        data_set = datasets.ScoreDataset(opt, set_type, split)
+        
+        diff = 0
+        out = open(os.path.join(out_dir, f'scores_{set_type}_{split}.txt'), 'w')
+        for item in tqdm(data_set):
+            in_f, pred_score = rank_by_score(model, item)
+            gt_score = data_set.score_dict[item['image_path']]
+            line = f'{in_f}\t{gt_score}\t{pred_score}\n'
+            out.write(line)
+            out_total.write(line)
+            diff += abs(gt_score - pred_score)
+        out.close()
+        print('average score difference', diff / len(data_set))
+    
+    out_total.close()
+
+    print('Finish part 2 inference')
 
 
 if __name__ == '__main__':
     opt = options.BaseOptions().gather_options()
-    out_path = os.path.join('outputs', opt.name + '_' + opt.split, 'lists.txt')
-    out_dir = os.path.dirname(out_path)
-    if not os.path.isdir(out_dir):
-        os.makedirs(out_dir)
-    out = open(out_path, 'w')
-
-    test_set = datasets.Food(opt, opt.split)
-    
-    model_type = getattr(models, f'CLIPComparator_{opt.model_type.capitalize()}')
-    model = model_type(opt)
-
-    if opt.model_type == 'siamese':
-        rank_func = rank_by_score
+    if opt.loss_type == 'singular':
+        rank_part_2(opt)
     else:
-        assert opt.model_type == 'concate', opt.model_type
-        rank_func = rank_by_compare
-
-    state = torch.load( f'{opt.out_dir}/{opt.name}/last.ckpt', map_location='cpu')
-    model.load_state_dict(state['state_dict'], strict=False)
-    model.eval()
-    model.to(device)
-
-    for i in range(len(test_set)):
-        print(f'{i+1}/{len(test_set)}')
-
-        in_f, score = rank_func(test_set, i)
-        dir_name, base_name = tuple(in_f.split('/')[-2:])
-        out_f = f'score={score}_{dir_name}_{base_name}'
-        out.write(f'{out_f}\t{in_f}\n')
-
-    out.close()
+        rank_part_1(opt)

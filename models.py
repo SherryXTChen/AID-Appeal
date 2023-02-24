@@ -1,191 +1,176 @@
+from collections import defaultdict
+import random
+random.seed(0)
+
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 import clip
-import random
-random.seed(0)
+
+from diffusers.models import AutoencoderKL
 
 torch.backends.cudnn.benchmark = True
 
-def generate_weights(counts):
-    weights = torch.Tensor([sum(counts) / (len(counts) * c) for c in counts])
-    return weights
-
-class CLIPComparator_Concate(pl.LightningModule):
+# part 1
+class CLIPComparator(pl.LightningModule):
     def __init__(self, opt):
         super().__init__()
         self.opt = opt
+        self.create_model()
+            
+    def create_model(self):
         clip_model, _ = clip.load('ViT-L/14', device='cpu')
-        input_size = 768
-        self.clip_model = clip_model.visual
+        self.pretrained_model = clip_model.visual
+        for param in self.pretrained_model.parameters():
+            param.requires_grad = False
+        self.pretrained_model.eval()
 
-        self.clip_model.requires_grad_(False)
-        self.clip_model.eval()
-
-        # backbone
-        self.comparator = nn.Sequential(
-            nn.Linear(input_size * 2, 1024),
-            #nn.ReLU(),
+        self.backbone = nn.Sequential(
+            nn.Linear(768, 1024),
             nn.Dropout(0.2),
             nn.Linear(1024, 128),
-            #nn.ReLU(),
             nn.Dropout(0.2),
-            #nn.ReLU(),
-            nn.Linear(128, 64),
-            #nn.ReLU(),
+        )
+        self.head = nn.Sequential(
+            nn.Linear(128 * 2, 64),
             nn.Dropout(0.1),
             nn.Linear(64, 16),
-            #nn.ReLU(),
-            nn.Linear(16, 2),
-            nn.Sigmoid(),
+            nn.Linear(16, 1),
         )
-        self.criterion = nn.CrossEntropyLoss()
+        self.model_list = [self.backbone, self.head]
 
     def configure_optimizers(self):
+        param_list = [list(m.parameters()) for m in self.model_list]
+        param_list = sum(param_list, [])
+
         optimizer = torch.optim.AdamW(
-            filter(lambda p: p.requires_grad, list(self.comparator.parameters())),
+            filter(lambda p: p.requires_grad, param_list),
             lr=self.opt.lr,
         )
         return optimizer
 
     def forward(self, x):
-        score = self.comparator(x)
-        return score
+        return NotImplementedError()
 
     def one_step(self, items, split):
-        feat1 = self.clip_model(items['image1'].to(self.device))
-        feat2 = self.clip_model(items['image2'].to(self.device))
-
-        pred_labels = self(torch.cat([feat1, feat2], axis=-1))
-        gt_labels = items['label'].to(self.device)
+        feature_list = [self.backbone(self.pretrained_model(image.to(self.device))) for image in items['image_list']]
+        pred_label = self.head(torch.cat(feature_list, axis=-1))
+        gt_score_list = [gt_score.to(self.device).float().unsqueeze(-1) 
+            for gt_score in items['image_score_list']]
+        gt_label = gt_score_list[0] - gt_score_list[1]
 
         ret = {}
-        ret[f'{split}/accu'] = (torch.max(pred_labels, 1)[1] == gt_labels).sum() / gt_labels.shape[0]
-        ret[f'{split}/loss'] = self.criterion(pred_labels, gt_labels).mean()
-
+        ret[f'{split}/pairwise_diff_loss'] = nn.L1Loss()(pred_label, gt_label).mean()
         return ret
 
     def training_step(self, batch, batch_idx):
         split = 'train'
         ret = self.one_step(batch, split)
         self.log_dict(ret, sync_dist=True)
-        return ret[f'{split}/loss']
+        
+        loss = sum([v for k, v in ret.items() if k.endswith('_loss')])
+        return loss
 
     def validation_step(self, batch, batch_idx):
         split = 'val'
         ret = self.one_step(batch, split)
         self.log_dict(ret, sync_dist=True)
-        return ret # ret[f'{split}/loss']
+        return ret
 
     def validation_epoch_end(self, outputs):
-        loss_lst = [o['val/loss'] for o in outputs]
-        accu_lst = [o['val/accu'] for o in outputs]
-        print('average loss on validation set:', sum(loss_lst) / len(loss_lst))
-        print('average accuracy on validation set:', sum(accu_lst) / len(accu_lst))
+        dict = defaultdict(list)
+        for o in outputs:
+            for k, v in o.items():
+                dict[k].append(v)
+        for k, v in dict.items():
+            print('validation_epoch_end', k, sum(v)/len(v))
 
-
-class CLIPComparator_Siamese(pl.LightningModule):
+# part 2
+class CLIPScorer(pl.LightningModule):
     def __init__(self, opt):
         super().__init__()
         self.opt = opt
+        self.create_model()
+            
+    def create_model(self):
+        self.pretrained_model = VQGAN()
+        for param in self.pretrained_model.parameters():
+            param.requires_grad = False
+        self.pretrained_model.eval()
+
         clip_model, _ = clip.load('ViT-L/14', device='cpu')
-        input_size = 768
-        self.clip_model = clip_model.visual
+        self.backbone = clip_model.visual
+        for param in self.backbone.parameters():
+            param.requires_grad = False
+        self.backbone.eval()
 
-        self.clip_model.requires_grad_(False)
-        self.clip_model.eval()
+        kernel_size = self.opt.image_size // 8 // (224 // 14) # patch size: 32 x 32 rgb pixels
+        self.backbone.conv1 = nn.Conv2d(in_channels=4, out_channels=1024, kernel_size=kernel_size, stride=kernel_size, bias=False)
+        for param in self.backbone.conv1.parameters():
+            param.requires_grad = True
 
-        # backbone
-        self.backbone = nn.Sequential(
-            nn.Linear(input_size, 1024),
-            #nn.ReLU(),
+        self.head = nn.Sequential(
+            nn.Linear(768, 1024),
             nn.Dropout(0.2),
             nn.Linear(1024, 128),
-            #nn.ReLU(),
             nn.Dropout(0.2),
-            #nn.ReLU(),
-        )
-        self.scorer = nn.Sequential(
             nn.Linear(128, 64),
-            #nn.ReLU(),
             nn.Dropout(0.1),
             nn.Linear(64, 16),
-            #nn.ReLU(),
             nn.Linear(16, 1),
-            # nn.Sigmoid(),
         )
-
-        if self.opt.loss_type == 'pair':
-            self.criterion = nn.CrossEntropyLoss()
-        else:
-            assert self.opt.loss_type == 'triplet'
-            self.criterion = nn.TripletMarginLoss()
+        self.model_list = [self.backbone.conv1, self.head]
 
     def configure_optimizers(self):
+        param_list = [list(m.parameters()) for m in self.model_list]
+        param_list = sum(param_list, [])
+
         optimizer = torch.optim.AdamW(
-            filter(lambda p: p.requires_grad, list(self.backbone.parameters()) + list(self.scorer.parameters())),
+            filter(lambda p: p.requires_grad, param_list),
             lr=self.opt.lr,
         )
         return optimizer
 
     def forward(self, x):
-        x = self.clip_model(x)
+        x = self.pretrained_model(x)
         x = self.backbone(x)
-        x = self.scorer(x)
+        x = self.head(x)
         return x
-
-    def one_step_pair(self, items, split):
-        score1 = self(items['image1'].to(self.device))
-        score2 = self(items['image2'].to(self.device))
-
-        pred_labels = torch.cat([score1, score2], axis=-1)
-        gt_labels = items['label'].to(self.device)
-
+      
+    def one_step(self, items, split):
+        pred_score = self(items['image'].to(self.device))
+        gt_score = items['image_score'].to(self.device).float().unsqueeze(-1)
         ret = {}
-        ret[f'{split}/accu'] = (torch.max(pred_labels, 1)[1] == gt_labels).sum() / gt_labels.shape[0]
-        ret[f'{split}/loss'] = self.criterion(pred_labels, gt_labels).mean()
-
-        return ret
-
-    def one_step_triplet(self, items, split):
-        anchor_feat = self.backbone(self.clip_model(items['anchor_image']))
-        pos_feat = self.backbone(self.clip_model(items['pos_image']))
-        neg_feat = self.backbone(self.clip_model(items['neg_image']))
-        
-        ret = {}
-        ret[f'{split}/loss'] = self.criterion(anchor_feat, pos_feat, neg_feat)    
-        
+        ret[f'{split}/score_loss'] = nn.L1Loss()(pred_score, gt_score) # TODO: add image log
         return ret
 
     def training_step(self, batch, batch_idx):
         split = 'train'
-        
-        if self.opt.loss_type == 'pair':
-            ret = self.one_step_pair(batch, split)
-        else:
-            assert self.opt.loss_type == 'triplet'
-            ret = self.one_step_triplet(batch, split)
-
+        ret = self.one_step(batch, split)
         self.log_dict(ret, sync_dist=True)
-        return ret[f'{split}/loss']
+        
+        loss = sum([v for k, v in ret.items() if k.endswith('_loss')])
+        return loss
 
     def validation_step(self, batch, batch_idx):
         split = 'val'
-        
-        if self.opt.loss_type == 'pair':
-            ret = self.one_step_pair(batch, split)
-        else:
-            assert self.opt.loss_type == 'triplet'
-            ret = self.one_step_triplet(batch, split)
-
+        ret = self.one_step(batch, split)
         self.log_dict(ret, sync_dist=True)
-        return ret # ret[f'{split}/loss']
+        return ret
 
     def validation_epoch_end(self, outputs):
-        loss_lst = [o['val/loss'] for o in outputs]
-        print('average loss on validation set:', sum(loss_lst) / len(loss_lst))
+        dict = defaultdict(list)
+        for o in outputs:
+            for k, v in o.items():
+                dict[k].append(v)
+        for k, v in dict.items():
+            print('validation_epoch_end', k, sum(v)/len(v))
 
-        if outputs and 'val/accu' in outputs[0]:
-            accu_lst = [o['val/accu'] for o in outputs]
-            print('average accuracy on validation set:', sum(accu_lst) / len(accu_lst))
-        
+class VQGAN(nn.Module):
+    def __init__(self):
+        super().__init__()    
+        self.vae = AutoencoderKL.from_pretrained("stabilityai/stable-diffusion-2-1-base", subfolder='vae').cuda()
+
+    def forward(self, image):
+        with torch.no_grad():
+            return self.vae.encode(image).latent_dist.mode()
