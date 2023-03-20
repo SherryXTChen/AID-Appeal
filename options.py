@@ -8,19 +8,15 @@ class BaseOptions():
         parser.add_argument('--name', type=str, required=True, help='name of experiment')
         parser.add_argument('--out_dir', type=str, default='ckpts', help='path to training results')
 
-        # model
-        # parser.add_argument('--num_classes', type=int, default=1, help='number of classes')
+        # model config
         parser.add_argument('--loss_type', type=str, required=True, choices=['singular', 'pair', 'triplet'], help='loss type')
-        
+        parser.add_argument('--resume', type=str, default='', help='ckeckpoint')
+        parser.add_argument('--unfreeze_pretrained', action='store_true', help = 'unfreeze pretrained weight')
+
         # dataset
         parser.add_argument('--root', type=str, required=True, help='path to images')
         parser.add_argument('--split_ratio', type=float, default=0.8, help='train data radio')
         parser.add_argument('--image_size', type=int, default=512, help='image size')
-        
-        # test
-        # parser.add_argument('--resume', type=str, default='', help='ckeckpoint')
-        # parser.add_argument('--split', type=str, default='val', help='data split to rank')
-        # parser.add_argument('--num_samples', type=int, default=100, help='data split to rank')
 
         # training
         parser.add_argument('--batch_size', type=int, default=256, help='batch size')

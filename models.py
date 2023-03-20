@@ -1,17 +1,10 @@
 from collections import defaultdict
-import random
-random.seed(0)
-
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 import clip
 
-from diffusers.models import AutoencoderKL
-
-torch.backends.cudnn.benchmark = True
-
-# part 1
+# relative appeal score comparator
 class CLIPComparator(pl.LightningModule):
     def __init__(self, opt):
         super().__init__()
@@ -21,9 +14,6 @@ class CLIPComparator(pl.LightningModule):
     def create_model(self):
         clip_model, _ = clip.load('ViT-L/14', device='cpu')
         self.pretrained_model = clip_model.visual
-        for param in self.pretrained_model.parameters():
-            param.requires_grad = False
-        self.pretrained_model.eval()
 
         self.backbone = nn.Sequential(
             nn.Linear(768, 1024),
@@ -37,7 +27,14 @@ class CLIPComparator(pl.LightningModule):
             nn.Linear(64, 16),
             nn.Linear(16, 1),
         )
-        self.model_list = [self.backbone, self.head]
+
+        if self.opt.unfreeze_pretrained:
+            self.model_list = [self.pretrained_model, self.backbone, self.head]
+        else:
+            for param in self.pretrained_model.parameters():
+                param.requires_grad = False
+            self.pretrained_model.eval()
+            self.model_list = [self.backbone, self.head]
 
     def configure_optimizers(self):
         param_list = [list(m.parameters()) for m in self.model_list]
@@ -91,36 +88,28 @@ class CLIPScorer(pl.LightningModule):
         super().__init__()
         self.opt = opt
         self.create_model()
-            
+
     def create_model(self):
-        self.pretrained_model = VQGAN()
+        clip_model, _ = clip.load('ViT-L/14', device='cpu')
+        self.pretrained_model = clip_model.visual
         for param in self.pretrained_model.parameters():
             param.requires_grad = False
         self.pretrained_model.eval()
 
-        clip_model, _ = clip.load('ViT-L/14', device='cpu')
-        self.backbone = clip_model.visual
-        for param in self.backbone.parameters():
-            param.requires_grad = False
-        self.backbone.eval()
-
-        kernel_size = self.opt.image_size // 8 // (224 // 14) # patch size: 32 x 32 rgb pixels
-        self.backbone.conv1 = nn.Conv2d(in_channels=4, out_channels=1024, kernel_size=kernel_size, stride=kernel_size, bias=False)
-        for param in self.backbone.conv1.parameters():
-            param.requires_grad = True
-
-        self.head = nn.Sequential(
+        self.backbone = nn.Sequential(
             nn.Linear(768, 1024),
             nn.Dropout(0.2),
             nn.Linear(1024, 128),
             nn.Dropout(0.2),
+        )
+        self.head = nn.Sequential(
             nn.Linear(128, 64),
             nn.Dropout(0.1),
             nn.Linear(64, 16),
             nn.Linear(16, 1),
         )
-        self.model_list = [self.backbone.conv1, self.head]
-
+        self.model_list = [self.backbone, self.head]
+    
     def configure_optimizers(self):
         param_list = [list(m.parameters()) for m in self.model_list]
         param_list = sum(param_list, [])
@@ -165,12 +154,3 @@ class CLIPScorer(pl.LightningModule):
                 dict[k].append(v)
         for k, v in dict.items():
             print('validation_epoch_end', k, sum(v)/len(v))
-
-class VQGAN(nn.Module):
-    def __init__(self):
-        super().__init__()    
-        self.vae = AutoencoderKL.from_pretrained("stabilityai/stable-diffusion-2-1-base", subfolder='vae').cuda()
-
-    def forward(self, image):
-        with torch.no_grad():
-            return self.vae.encode(image).latent_dist.mode()

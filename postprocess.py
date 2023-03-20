@@ -1,12 +1,12 @@
 import os
 import sys
 import glob
-from PIL import Image, ImageOps, ImageDraw, ImageFont
 import numpy as np
-import cv2
-import shutil
-import random
-random.seed(0)
+from collections import defaultdict
+from PIL import Image, ImageOps, ImageDraw, ImageFont
+
+import matplotlib.pyplot as plt
+plt.rcParams.update({'font.size': 12})
 
 
 def generate_stats(loc, min_rank, max_rank):
@@ -27,34 +27,22 @@ def generate_image_html(lst, loc, h, w):
 def rank_images(file_path, root='/Users/xiaotongchen/Documents/datasets'):
     lines = open(file_path).readlines()
     data_list = []
+
+    diff = 0
     for l in lines:
         in_f, gt_score, pred_score = tuple(l.strip().split('\t'))
         in_f = os.path.join(root, in_f)
         gt_score = float(gt_score)
         pred_score = float(pred_score)
         data_list.append((in_f, gt_score, pred_score))
+        
+        diff += abs(gt_score - pred_score) 
+
     data_list = sorted(data_list, key=lambda x:-x[-1])
+    print(diff / len(lines))
 
     return data_list
 
-
-def generate_html_by_type():
-    file_path = sys.argv[2]
-    if 'food' in file_path:
-        type_list = [
-            'burger', 'cake', 'cookie', 'fried_rice', 'ice_cream', 'pizza', 'ramen', 'chicken', 'salad', 'steak'
-        ]
-        additional_type_list = ['moldy_food', 'burnt_food']
-    elif 'room' in file_path:    
-        type_list = [
-            'bathroom', 'bedroom', 'kitchen', 'living_room'
-        ]
-        additional_type_list = ['dirty_room']
-
-    for t in type_list:
-        out_path = generate_html_helper(file_path, [t] + additional_type_list)
-        if out_path:
-            os.system(f'open {out_path}')
 
 def generate_html_all():
     file_path = sys.argv[2]
@@ -64,6 +52,7 @@ def generate_html_all():
 
 def generate_html_helper(file_path, filter_list):
     data_list = rank_images(file_path)
+    data_list = data_list[::100]
     name = 'all' 
     if filter_list:
         data_list = [x for x in data_list if (any(f in x[0] for f in filter_list))]
@@ -123,95 +112,131 @@ def generate_html_helper(file_path, filter_list):
             stats = generate_stats(loc, i, i+10)
             outputfile.write(stats)
 
-            line = generate_image_html(out_list, loc, h=512, w=512)
+            line = generate_image_html(out_list, loc, h=100, w=100)
             outputfile.write(line)
 
     return out_path
 
-def resize_image(f):
-    img = Image.open(f).convert('RGB')
-    max_side = 224
-    w, h = img.size
-    if w >= h:
-        w_new = max_side
-        h_new = max_side * h // w
-        x = (max_side - h_new) //2
-        y = 0
-    else:
-        h_new = max_side
-        w_new = max_side * w // h
-        x = 0
-        y = (max_side - w_new) // 2
-    img = img.resize((w_new, h_new))
 
-    canvas = Image.new('RGB', (max_side, max_side))
-    canvas.paste(img, (y, x))
-    return canvas
+def response_stats():
+    meta = open('user_study/meta.txt').readlines()
+    meta = [l.strip().split() for l in meta]
+    meta = {l[0]: (float(l[1]), float(l[2])) for l in meta}
 
-
-def user_study():
-    in_dir = sys.argv[2]
-    user_index = sys.argv[3]
-    num_pairs = int(sys.argv[4])
-
-    if in_dir[-1] == '/':
-        in_dir = in_dir[:-1]
-    
-    out_dir = os.path.join(os.path.dirname(in_dir), 'user_study', user_index)
-    # out_img_dir = os.path.join(out_dir, 'images')
+    response_file_list = glob.glob('user_study/responses/*.txt')[27:28]
+    out_dir = 'user_study/plots'
     os.makedirs(out_dir, exist_ok=True)
 
-    out_path = os.path.join(out_dir, 'answers.txt')
-    out = open(out_path, 'w')
+    response_dict_label_all = {'food': defaultdict(list), 'room': defaultdict(list)}
+    response_dict_mani_all = {'food': defaultdict(list), 'room': defaultdict(list)}
 
-    dir_list = glob.glob(f'{in_dir}/*/', recursive=True)
-    # accu = 0
-    out.write('\t'.join(['index', 'image1 score', 'image2 score', 'more appealing by user']) + '\n')
+    for response_file in response_file_list:
+        # if 'corrupted' in response_file:
+        #     continue
+        response_lines = open(response_file).readlines()[1:]
+        response_lines = [l.strip().split('\t') for l in response_lines]
+        response_lines = [(l[0], l[1], int(l[2])) for l in response_lines]
 
-    past_samples = []
-
-    for i in range(num_pairs):
-        dir = random.choice(dir_list)
-        image_list = glob.glob(f'{dir}/*.jp*g', recursive=True) + glob.glob(f'{dir}/*.jp*g', recursive=True)
-        
-        f1, f2 = tuple(random.sample(image_list, 2))
-        while (f1, f2) in past_samples or (f2, f1) in past_samples:
-            f1, f2 = tuple(random.sample(image_list, 2))
-        past_samples.append((f1, f2))
-
-        score1 = float(f1[f1.index('pred=')+len('pred='):].split('_')[0])
-        score2 = float(f2[f2.index('pred=')+len('pred='):].split('_')[0])
-
-        line = [i+1, score1, score2]
-        # if score1 > score2:
-        #     line.append(1)
-        # else:
-        #     line.append(2)
-
-        img1 = resize_image(f1)
-        img2 = resize_image(f2)
-
-        img = np.concatenate([np.array(img1, np.uint8), np.array(img2, np.uint8)], axis=1)
-        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-        cv2.imshow(f'{i+1}/{num_pairs}: which one do you like? (1: left, 2: right, 3: both, 4: neither)', img)
-        
-        while True:
-            k = cv2.waitKey(0)
-            if k in [49, 50, 51, 52]: # img1 better
-                line.append(k-49)
-                break
+        response_dict_label = {'food': defaultdict(list), 'room': defaultdict(list)}
+        response_dict_mani = {'food': defaultdict(list), 'room': defaultdict(list)}        
+        for response in response_lines:
+            f1, f2, response_value = response
+            if 'food'  in f1:
+                type = 'food'
             else:
-                print('Select 1-4')
+                assert 'room' in f1, f1
+                type = 'room'
 
-        shutil.copy(f1, f'image_{str(i+1).zfill(4)}_1.jpg')
-        shutil.copy(f2, f'image_{str(i+1).zfill(4)}_2.jpg')
+            if f1 in meta:
+                gt1 = meta[f1][0]
+                gt2 = meta[f2][0]
+                response_dict_label[type][response_value].append(gt1-gt2)
+                response_dict_label_all[type][response_value].append(gt1-gt2)
+            else:
+                gt1 = 0 if os.path.basename(f1) == '00001.jpg' else 1
+                gt2 = 1 - gt1
+                response_dict_mani[type][gt1-gt2].append(response_value)
+                response_dict_mani_all[type][gt1-gt2].append(response_value)
 
-        # if line[-1] == line[-2]:
-        #     accu += 1
-        out.write('\t'.join([str(x) for x in line]) + '\n')
+    for type, dict in response_dict_label_all.items():
+        out_name = os.path.join(out_dir, f'Pescatarian_{type}_label.png')
+        out_data = [dict[response_value] for response_value in range(1, 5+1)]
+        plt.boxplot(out_data, labels=[1, 2, 3, 4, 5])
+        plt.xlabel('Response Numbering')
+        plt.ylabel('A(Image A) - A(Image B)')
+        plt.title(f'{type.capitalize()} Dataset: Appeal Comparison Responses (Pescatarian)')
+        plt.tight_layout()
+        plt.savefig(out_name)
+        plt.clf()
 
-    out.close()
-    # print('model accuracy:', accu / num_pairs)
+    weight_counts = defaultdict(list)
+    labels = ['E pref strongly', 'E pref slightly',
+        'N pref', 
+        'O pref slightly', 'O pref strongly']
+    type_list = []
+
+    for type, dict in response_dict_mani_all.items():
+        out_name = os.path.join(out_dir, f'Pescatarian_{type}_enhancement.png')
+        out_data = [dict[diff] for diff in [1, -1]]
+        out_data_stats_list = []
+
+        for i in range(len(out_data)):
+            out_data_i = out_data[i]
+            out_data_stats = [len([x for x in out_data_i if x == response_value]) for response_value in [1, 2, 3, 4, 5]]
+            if i == 1:
+                out_data_stats.reverse()
+            out_data_stats_list.append(out_data_stats)
+        out_data = [out_data_stats_list[0][i] +  out_data_stats_list[1][i] for i in range(len(out_data_stats_list[0]))]
+        out_data = [x / sum(out_data) for x in out_data]
+
+        for i in range(len(out_data)):
+            weight_counts[labels[i]].append(out_data[i])
+        type_list.append(type)
+
+
+    for k in weight_counts:
+        weight_counts[k] = weight_counts[k][:1]
+    labels = ['E pref strongly', 'E pref slightly',
+        'N pref', 
+        'O pref slightly', 'O pref strongly']
+    type_list = ['food']
+
+    x = np.arange(len(type_list))
+    width = 0.16
+    multiplier = 0
+    fig, ax = plt.subplots(figsize=(12, 6))
+    
+    patterns = ["/", "\\", "-", "|", ""]
+
+    for attribute, measurement in weight_counts.items():
+        offset = width * multiplier
+        rects = ax.bar(x + offset, [round(x, 4) for x in measurement], width, label=attribute, edgecolor='black', hatch=patterns[multiplier])
+        ax.bar_label(rects, padding=3)
+        multiplier += 1
+
+    ax.set_ylabel('Total Number of Responses (%)')
+    ax.set_title('Appeal Enhancement Responses (Pescatarian)')
+    ax.set_xticks(x + width, type_list)
+    ax.set_ylim(0, 0.7)
+    ax.legend(loc='upper left', ncol=len(labels), prop={'size': 14}) #bbox_to_anchor=(1.3, 0.5), loc="center right")
+    out_name = out_name.replace(type, 'type')
+    plt.tight_layout()
+    plt.savefig(out_name)
+    plt.clf()
+
+
+def plot_participants_stats():
+    labels = ['Pescatarian', 'Pescatarian', 'Pescatarian', 'Pescatarian', 'Pescatarian']
+    sizes = [1, 1, 22, 1, 3]
+    title = 'Dietary Preference'
+    out_path = 'dietary.png'
+    angle = 0
+    plt.pie(sizes, labels=labels, startangle=angle, autopct='%1.1f%%')
+    plt.title(f'User Study Participants {title} Distribution')
+    plt.tight_layout()
+    plt.savefig(out_path)
+    plt.clf()
+
 
 
 if __name__ == '__main__':

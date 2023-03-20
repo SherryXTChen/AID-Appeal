@@ -1,8 +1,5 @@
 import os
 from tqdm import tqdm
-import random
-random.seed(0)
-
 import torch
 
 import options
@@ -44,13 +41,14 @@ def rank_by_score(model, item):
         score = model(image).item()
     return in_f, score
 
+# appeal score inference using relative appeal score comparator
 def rank_part_1(opt):
     opt = options.BaseOptions().gather_options()
     out_dir = os.path.join('outputs', opt.name)
     os.makedirs(out_dir, exist_ok=True)
 
     model = models.CLIPComparator(opt)
-    ckpt_path = os.path.join(opt.out_dir, opt.name, 'last.ckpt')
+    ckpt_path = os.path.join(opt.out_dir, opt.name, 'last-v1.ckpt')
     state = torch.load(ckpt_path, map_location='cpu')
     model.load_state_dict(state['state_dict'], strict=False)
     model.eval()
@@ -74,18 +72,17 @@ def rank_part_1(opt):
             out.write(line)
             out_total.write(line)
         out.close()
-
     out_total.close()
 
-    print('Finish part 1 inference')
 
+# appeal score inference using appeal score predictor
 def rank_part_2(opt):
     opt = options.BaseOptions().gather_options()
     out_dir = os.path.join('outputs', opt.name)
     os.makedirs(out_dir, exist_ok=True)
 
     model = models.CLIPScorer(opt)
-    ckpt_path = os.path.join(opt.out_dir, opt.name, 'last.ckpt')
+    ckpt_path = os.path.join(opt.out_dir, opt.name, 'last-v1.ckpt')
     state = torch.load(ckpt_path, map_location='cpu')
     model.load_state_dict(state['state_dict'], strict=False)
     model.eval()
@@ -93,7 +90,7 @@ def rank_part_2(opt):
 
     out_total = open(os.path.join(out_dir, f'scores_all_all.txt'), 'w')
 
-    for set_type, split in [('synthetic', 'all'), ('real', 'all')]:
+    for set_type, split in [('real', 'all'), ('synthetic', 'all')]:
         data_set = datasets.ScoreDataset(opt, set_type, split)
         
         diff = 0
@@ -109,8 +106,6 @@ def rank_part_2(opt):
         print('average score difference', diff / len(data_set))
     
     out_total.close()
-
-    print('Finish part 2 inference')
 
 
 if __name__ == '__main__':

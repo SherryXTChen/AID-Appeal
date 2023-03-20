@@ -1,7 +1,5 @@
 import os
-import random
-random.seed(0)
-
+import torch
 import torch.utils.data as data
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -40,8 +38,8 @@ if __name__ == '__main__':
 
     # binary labelled data
     if opt.loss_type == 'singular':
-        train_set = datasets.ScoreDataset(opt, 'synthetic', 'train')
-        val_set = datasets.ScoreDataset(opt, 'synthetic', 'val')
+        train_set = datasets.ScoreDataset(opt, 'real', 'train')
+        val_set = datasets.ScoreDataset(opt, 'real', 'val')
         model = models.CLIPScorer(opt)
     else:
         train_set = datasets.ComparisonDataset(opt, 'train')
@@ -62,13 +60,19 @@ if __name__ == '__main__':
         num_workers=opt.num_threads, 
         shuffle=False
     )
-    
-    ckpt_path = os.path.join(opt.out_dir, 'last.ckpt') 
-    if os.path.exists(ckpt_path):
-        resume = ckpt_path
-    else:
+
+    if opt.resume:
+        state = torch.load(opt.resume, map_location='cpu')
+        model.load_state_dict(state['state_dict'], strict=False)
         resume = None
-    print('resume from', resume)
+        print('resume from', opt.resume)
+    else:
+        ckpt_path = os.path.join(opt.out_dir, 'last.ckpt') 
+        if os.path.exists(ckpt_path):
+            resume = ckpt_path
+        else:
+            resume = None
+        print('resume from', resume)
 
     trainer = pl.Trainer(
         devices = opt.gpus,
