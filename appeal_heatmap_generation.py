@@ -110,10 +110,9 @@ def get_attention(opt):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--name', type=str, required=True, help='name of experiment')
+    parser.add_argument('--ckpt_dir', type=str, default='ckpts', help='path to training results')
     parser.add_argument('--input_dir', type=str, required=True, help='path to input images')
     parser.add_argument('--out_dir', type=str, default='attns', help='path to save ouputs')
-    parser.add_argument('--ckpt_dir', type=str, default='ckpts', help='path to training results')
-    parser.add_argument('--loss_type', type=str, required=True, choices=['singular', 'pair', 'triplet'], help='loss type')
     parser.add_argument('--image_size', type=int, default=512, help='image size')
     opt = parser.parse_args()
     get_attention(opt)
