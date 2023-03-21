@@ -37,5 +37,5 @@ To generate the image appeal heatmap, run this command:
 python appeal_heatmap_generation.py --name singular_with_clip_<dataset_name> --input_dir <path_to_input_images> 
 ```
 
-
+Use generated heatmaps as masks in Stable Diffusion inpainting to enhance image appeal.
 
