@@ -1,6 +1,7 @@
 # Image Appeal Assessment (IPA)
 
-## Data
+## Datasets
+
 Create a dataset root directory called `datasets/` in this directory. Download `datasets/<dataset_name>.zip` from [here](https://www.dropbox.com/sh/t7kpyqtro7f6pgs/AAD-ayQg9ZarI0-UM8v4h6k2a?dl=0), move them to the dataset root directory, and unzip them.
 
 ## Training
