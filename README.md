@@ -1,8 +1,7 @@
 # Image Appeal Assessment (IPA)
 
 ## Data
-download dataset from [Dropbox]([https://www.dropbox.com/scl/fo/o2eebro2kqi9uzhojlkt1/h?dl=0&rlkey=xq877c336zvaeuwyrmjhzswqb](https://www.dropbox.com/sh/t7kpyqtro7f6pgs/AAD-ayQg9ZarI0-UM8v4h6k2a?dl=0), and move the directory to this folder
-
+Create a root directory for datasets called ImageAppeal/. Download datasets from [here](https://www.dropbox.com/scl/fo/o2eebro2kqi9uzhojlkt1/h?dl=0&rlkey=xq877c336zvaeuwyrmjhzswqb](https://www.dropbox.com/sh/t7kpyqtro7f6pgs/AAD-ayQg9ZarI0-UM8v4h6k2a?dl=0), move them to the root directory, and unzip them.
 
 ## Training
 
