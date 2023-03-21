@@ -24,7 +24,7 @@ class BaseOptions():
         parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
         parser.add_argument('--num_epochs', type=int, default=1, help='total number of training epochs')
         parser.add_argument('--gpus', type=int, default=1, help='total number of gpus')
-    
+
         return parser
 
     def gather_options(self):

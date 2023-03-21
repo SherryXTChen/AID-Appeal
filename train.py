@@ -14,7 +14,7 @@ if __name__ == '__main__':
     for k, v in vars(opt).items():
         print(f'{k}: {v}')
     os.makedirs(opt.out_dir, exist_ok=True)
-    
+
     with open(os.path.join(opt.out_dir, 'command.txt'), 'w') as out:
         for k, v in vars(opt).items():
             out.write(f'{k}: {v}\n')
@@ -57,7 +57,7 @@ if __name__ == '__main__':
     val_loader = data.DataLoader(
         val_set,
         batch_size=opt.batch_size,
-        num_workers=opt.num_threads, 
+        num_workers=opt.num_threads,
         shuffle=False
     )
 
@@ -67,7 +67,7 @@ if __name__ == '__main__':
         resume = None
         print('resume from', opt.resume)
     else:
-        ckpt_path = os.path.join(opt.out_dir, 'last.ckpt') 
+        ckpt_path = os.path.join(opt.out_dir, 'last.ckpt')
         if os.path.exists(ckpt_path):
             resume = ckpt_path
         else:
