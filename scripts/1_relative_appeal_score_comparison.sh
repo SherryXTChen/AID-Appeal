@@ -1,7 +1,7 @@
 #!/bin/bash
 
 name="pair_with_clip_$1"
-root="ImageAppeal/$1"
+root="datasets/$1"
 copy_from="outputs/pair_with_clip_$1/scores_real_all.txt"
 echo "$name $root $copy_from"
 
