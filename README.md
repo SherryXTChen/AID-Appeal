@@ -1,4 +1,6 @@
-# Image Appeal Assessment (IPA)
+# AID-AppEAL: Automatic Image Dataset and Algorithm for Content Appeal Enhancement and Assessment Labeling (ECCV 2024)
+
+AID-AppEAL is a system that automates dataset creation and implements algorithms to estimate and boost content appeal.
 
 ## Datasets
 
