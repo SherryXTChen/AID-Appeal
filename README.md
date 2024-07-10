@@ -53,3 +53,18 @@ Results will be saved under `outputs` by default.
 ### Content Appeal Enhancement
 
 To enhance image content appeal, we use Automatic1111 [Stable Diffusion web UI](https://github.com/AUTOMATIC1111/stable-diffusion-webui) `> img2img > Generation > Inpaint upload` with Stable Diffusion v2.1, where aforementioned heatmaps are used as inpainting masks. For more details, pleae refer to the paper and the supplementary pdf.
+
+
+## BibTeX
+
+``` bibtex
+@misc{chen2024aidappealautomaticimagedataset,
+      title={AID-AppEAL: Automatic Image Dataset and Algorithm for Content Appeal Enhancement and Assessment Labeling}, 
+      author={Sherry X. Chen and Yaron Vaxman and Elad Ben Baruch and David Asulin and Aviad Moreshet and Misha Sra and Pradeep Sen},
+      year={2024},
+      eprint={2407.05546},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2407.05546}, 
+}
+```
