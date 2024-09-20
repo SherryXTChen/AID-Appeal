@@ -1,5 +1,7 @@
 # AID-AppEAL: Automatic Image Dataset and Algorithm for Content Appeal Enhancement and Assessment Labeling (ECCV 2024)
 
+[[Arxiv](https://arxiv.org/abs/2407.05546)] [[Poster](https://eccv.ecva.net/virtual/2024/poster/1021)] [[Youtube](https://www.youtube.com/watch?v=UfPfPN9aht4)]
+
 AID-AppEAL is a system that automates dataset creation and implements algorithms to estimate and boost content appeal.
 
 <p align="center">
